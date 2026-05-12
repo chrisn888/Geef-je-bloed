@@ -17,6 +17,14 @@ from urllib.error import URLError
 URL = "https://donorportaal.rodekruis.be/collection?c=kBg5ngJJ1yu"
 MAX_SEATS = 13
 
+# All expected time slots — fully booked slots disappear from the page,
+# so we fill them in as free=0 if they're missing from the response.
+ALL_SLOTS = [
+    "11:00", "11:15", "11:30", "11:45",
+    "12:00", "12:15", "12:30", "12:45",
+    "13:00", "13:15", "13:30", "13:45",
+]
+
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -138,6 +146,18 @@ def parse_slots(html: str) -> list[dict]:
     return []
 
 
+def fill_missing_slots(slots: list[dict]) -> list[dict]:
+    """Add fully-booked slots (free=0) for any time that disappeared from the page."""
+    found = {s["time"] for s in slots}
+    full = [{"time": t, "free": 0, "max": MAX_SEATS} for t in ALL_SLOTS if t not in found]
+    if full:
+        print(f"  [info] {len(full)} slot(s) missing from page — assumed fully booked: "
+              + ", ".join(s["time"] for s in full))
+    combined = slots + full
+    combined.sort(key=lambda s: s["time"])
+    return combined
+
+
 def update_html(slots: list[dict], timestamp: str) -> None:
     path = "index.html"
     with open(path, "r", encoding="utf-8") as f:
@@ -183,6 +203,8 @@ def main():
     if not slots:
         print("ERROR: no slots found. The portal may require authentication.", file=sys.stderr)
         sys.exit(1)
+
+    slots = fill_missing_slots(slots)
 
     for s in slots:
         registered = s["max"] - s["free"]
